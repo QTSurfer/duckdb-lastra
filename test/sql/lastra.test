@@ -1,0 +1,36 @@
+# name: test/sql/lastra.test
+# description: Test Lastra extension
+# group: [lastra]
+
+require lastra
+
+# Read a .lastra file using the table function
+query II
+SELECT typeof(ts), typeof(close) FROM read_lastra('test/fixtures/series-only.lastra') LIMIT 1;
+----
+BIGINT	DOUBLE
+
+# Read all rows
+query I
+SELECT count(*) FROM read_lastra('test/fixtures/series-only.lastra');
+----
+100
+
+# Replacement scan: just use the filename
+query I
+SELECT count(*) FROM 'test/fixtures/series-only.lastra';
+----
+100
+
+# Row group file
+query I
+SELECT count(*) FROM read_lastra('test/fixtures/row-groups.lastra');
+----
+10000
+
+# Temporal filter on row groups
+query I
+SELECT count(*) FROM read_lastra('test/fixtures/row-groups.lastra')
+WHERE ts BETWEEN 1711155600000 AND 1711159200000;
+----
+3600
