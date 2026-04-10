@@ -1,16 +1,26 @@
 #include "lastra_reader.hpp"
 #include <cstdint>
+#include <cstring>
 
 namespace duckdb {
 namespace lastra {
 namespace codec {
 
-// Zigzag decode: (n >>> 1) ^ -(n & 1)
+// Delta-varint wire format (lastra-java DeltaVarintCodec):
+// [first value: 8 bytes LE fixed]
+// [second delta: zigzag varint]
+// [remaining: delta-of-delta zigzag varints]
+
+static inline int64_t read_le_i64(const uint8_t *p) {
+    int64_t v;
+    std::memcpy(&v, p, 8);
+    return v;
+}
+
 static inline int64_t zigzag_decode(uint64_t n) {
     return static_cast<int64_t>((n >> 1) ^ (~(n & 1) + 1));
 }
 
-// Read unsigned varint from buffer, advance pos
 static inline uint64_t read_varint(const uint8_t *data, size_t &pos, size_t len) {
     uint64_t result = 0;
     int shift = 0;
@@ -25,13 +35,15 @@ static inline uint64_t read_varint(const uint8_t *data, size_t &pos, size_t len)
 
 void decode_delta_varint(const uint8_t *data, size_t length, int32_t count,
                          int64_t *output) {
+    if (count == 0) return;
     size_t pos = 0;
 
-    // First value: zigzag varint
-    int64_t prev = zigzag_decode(read_varint(data, pos, length));
+    // First value: fixed 8 bytes LE
+    int64_t prev = read_le_i64(data + pos);
+    pos += 8;
     output[0] = prev;
 
-    // Second value (if exists): delta
+    // Second value: first delta as zigzag varint
     int64_t prev_delta = 0;
     if (count > 1) {
         prev_delta = zigzag_decode(read_varint(data, pos, length));
@@ -39,10 +51,10 @@ void decode_delta_varint(const uint8_t *data, size_t length, int32_t count,
         output[1] = prev;
     }
 
-    // Remaining: delta-of-delta
+    // Remaining: delta-of-delta zigzag varints
     for (int32_t i = 2; i < count; i++) {
-        int64_t delta_of_delta = zigzag_decode(read_varint(data, pos, length));
-        prev_delta += delta_of_delta;
+        int64_t dod = zigzag_decode(read_varint(data, pos, length));
+        prev_delta += dod;
         prev += prev_delta;
         output[i] = prev;
     }
