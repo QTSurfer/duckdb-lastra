@@ -62,24 +62,40 @@ LastraFile parse(const uint8_t *data, size_t length) {
         file.event_columns = read_descriptors(file.events_col_count);
     }
 
+    // Detect footer size hint: last 8 bytes = [LAS! magic][footer size LE]
+    size_t trailer_size = 4; // default: just LAS!
+    if (length >= 8) {
+        uint32_t trail_magic = read_u32(data + length - 8);
+        if (trail_magic == FOOTER_MAGIC) {
+            trailer_size = 8; // LAS! + footerSize
+        }
+    }
+
     // Data section
     if (file.has_row_groups) {
-        // Scan row groups forward
-        while (true) {
+        // Parse footer using footer size hint
+        int32_t footer_size = read_i32(data + length - 4);
+        size_t fp = length - trailer_size - footer_size;
+
+        int32_t rg_count = read_i32(data + fp); fp += 4;
+        for (int32_t i = 0; i < rg_count; i++) {
+            RowGroupStats stats;
+            stats.offset = read_i32(data + fp); fp += 4;
+            stats.row_count = read_i32(data + fp); fp += 4;
+            stats.ts_min = read_i64(data + fp); fp += 8;
+            stats.ts_max = read_i64(data + fp); fp += 8;
+            file.row_groups.push_back(stats);
+        }
+
+        // Scan RG data forward using rgCount
+        for (int32_t rg = 0; rg < rg_count; rg++) {
             std::vector<ColumnChunk> rg_cols;
-            size_t temp_pos = pos;
-            bool valid = true;
             for (int c = 0; c < file.series_col_count; c++) {
-                if (temp_pos + 4 > length) { valid = false; break; }
-                int32_t len = read_i32(data + temp_pos);
-                if (len < 0 || temp_pos + 4 + len > length) { valid = false; break; }
-                rg_cols.push_back({data + temp_pos + 4, len, 0});
-                temp_pos += 4 + len;
+                int32_t len = read_i32(data + pos);
+                rg_cols.push_back({data + pos + 4, len, 0});
+                pos += 4 + len;
             }
-            if (!valid) break;
             file.rg_chunks.push_back(rg_cols);
-            pos = temp_pos;
-            if (file.rg_chunks.size() > 100000) break;
         }
 
         // Events
@@ -89,22 +105,12 @@ LastraFile parse(const uint8_t *data, size_t length) {
             pos += 4 + len;
         }
 
-        // Footer: rgCount + stats + CRCs
-        int32_t rg_count = read_i32(data + pos); pos += 4;
-        for (int32_t i = 0; i < rg_count; i++) {
-            RowGroupStats stats;
-            stats.offset = read_i32(data + pos); pos += 4;
-            stats.row_count = read_i32(data + pos); pos += 4;
-            stats.ts_min = read_i64(data + pos); pos += 8;
-            stats.ts_max = read_i64(data + pos); pos += 8;
-            file.row_groups.push_back(stats);
-        }
-
+        // CRCs from footer
         if (file.has_checksums) {
             for (int32_t rg = 0; rg < rg_count; rg++) {
                 for (int c = 0; c < file.series_col_count; c++) {
-                    file.rg_chunks[rg][c].crc = read_u32(data + pos);
-                    pos += 4;
+                    file.rg_chunks[rg][c].crc = read_u32(data + fp);
+                    fp += 4;
                 }
             }
         }

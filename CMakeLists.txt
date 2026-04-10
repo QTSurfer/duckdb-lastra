@@ -22,6 +22,11 @@ set(EXTENSION_SOURCES
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-# Link ZSTD (already available in DuckDB)
+# ZSTD: both static and loadable need it for varlen codec
 target_link_libraries(${EXTENSION_NAME} duckdb_zstd)
 target_link_libraries(${LOADABLE_EXTENSION_NAME} duckdb_zstd)
+
+install(TARGETS ${EXTENSION_NAME}
+        EXPORT "DuckDBExports"
+        LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+        ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")

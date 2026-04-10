@@ -5,7 +5,11 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/function/replacement_scan.hpp"
 #include "duckdb/main/extension_util.hpp"
+#include "duckdb/parser/expression/constant_expression.hpp"
+#include "duckdb/parser/expression/function_expression.hpp"
+#include "duckdb/parser/tableref/table_function_ref.hpp"
 #include <memory>
 #include <vector>
 
@@ -147,19 +151,20 @@ void RegisterLastraScan(DatabaseInstance &instance) {
     ExtensionUtil::RegisterFunction(instance, lastra_scan);
 
     // Also register as replacement scan for .lastra files
+    auto scan_fn = [](ClientContext &context, ReplacementScanInput &input,
+                      optional_ptr<ReplacementScanData> data) -> unique_ptr<TableRef> {
+        auto table_name = ReplacementScan::GetFullPath(input);
+        if (!StringUtil::EndsWith(StringUtil::Lower(table_name), ".lastra")) {
+            return nullptr;
+        }
+        auto table_function = make_uniq<TableFunctionRef>();
+        vector<unique_ptr<ParsedExpression>> children;
+        children.push_back(make_uniq<ConstantExpression>(Value(table_name)));
+        table_function->function = make_uniq<FunctionExpression>("read_lastra", std::move(children));
+        return std::move(table_function);
+    };
     auto &config = DBConfig::GetConfig(instance);
-    config.replacement_scans.emplace_back(
-        [](ClientContext &context, const string &table_name, ReplacementScanData *data)
-            -> unique_ptr<TableRef> {
-            if (!StringUtil::EndsWith(StringUtil::Lower(table_name), ".lastra")) {
-                return nullptr;
-            }
-            auto table_function = make_uniq<TableFunctionRef>();
-            vector<unique_ptr<ParsedExpression>> children;
-            children.push_back(make_uniq<ConstantExpression>(Value(table_name)));
-            table_function->function = make_uniq<FunctionExpression>("read_lastra", std::move(children));
-            return std::move(table_function);
-        });
+    config.replacement_scans.emplace_back(scan_fn);
 }
 
 // ---- Extension entry point ----
