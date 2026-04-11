@@ -6,77 +6,45 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  DUCKDB_VERSION: v1.3.0
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}
+  cancel-in-progress: true
 
 jobs:
-  native:
+  linux:
+    name: Linux (amd64)
     runs-on: ubuntu-24.04
+    env:
+      GEN: ninja
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache DuckDB source
-        uses: actions/cache@v4
         with:
-          path: duckdb
-          key: duckdb-src-${{ env.DUCKDB_VERSION }}
-
-      - name: Clone DuckDB
-        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
-        run: |
-          rm -rf duckdb
-          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
-
-      - name: Create extension symlink
-        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+          fetch-depth: 0
+          submodules: true
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
-          key: native-${{ env.DUCKDB_VERSION }}
+          key: linux-amd64
 
       - name: Build
-        run: |
-          mkdir -p build/release && cd build/release
-          cmake -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DDUCKDB_EXTENSION_NAMES="lastra" \
-                -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
-                -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
-                -DDUCKDB_EXTENSION_LASTRA_LOAD_TESTS=1 \
-                ../../duckdb
-          cmake --build . --config Release -- -j$(nproc)
+        run: make release
 
       - name: Test
-        run: |
-          echo "SELECT count(*) FROM read_lastra('$GITHUB_WORKSPACE/test/fixtures/series-only.lastra');" | build/release/duckdb
-          echo "SELECT count(*), min(close), max(close) FROM read_lastra('$GITHUB_WORKSPACE/test/fixtures/row-groups.lastra');" | build/release/duckdb
+        run: make test
 
-      - name: Upload extension
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: lastra-linux-amd64
           path: build/release/extension/lastra/lastra.duckdb_extension
 
   wasm:
+    name: WASM
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache DuckDB source
-        uses: actions/cache@v4
         with:
-          path: duckdb
-          key: duckdb-src-${{ env.DUCKDB_VERSION }}
-
-      - name: Clone DuckDB
-        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
-        run: |
-          rm -rf duckdb
-          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
-
-      - name: Create extension symlink
-        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+          fetch-depth: 0
+          submodules: true
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -95,8 +63,7 @@ jobs:
             ../../duckdb
           emmake make -j$(nproc) lastra_loadable_extension
 
-      - name: Upload WASM extension
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: lastra-wasm
           path: build/wasm/extension/lastra/lastra.duckdb_extension.wasm

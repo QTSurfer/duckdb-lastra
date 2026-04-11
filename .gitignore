@@ -1,5 +1,4 @@
 build/
-duckdb/
 .cache/
 *.o
 *.duckdb_extension

@@ -5,31 +5,33 @@ on:
     tags:
       - 'v*'
 
-env:
-  DUCKDB_VERSION: v1.3.0
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-wasm:
+  release:
+    name: Build and Release
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      GEN: ninja
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache DuckDB source
-        uses: actions/cache@v4
         with:
-          path: duckdb
-          key: duckdb-src-${{ env.DUCKDB_VERSION }}
+          fetch-depth: 0
+          submodules: true
 
-      - name: Clone DuckDB
-        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
-        run: |
-          rm -rf duckdb
-          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: release
 
-      - name: Create extension symlink
-        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+      - name: Build native
+        run: make release
+
+      - name: Test
+        run: make test
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -48,22 +50,6 @@ jobs:
             ../../duckdb
           emmake make -j$(nproc) lastra_loadable_extension
 
-      - uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: release-native-${{ env.DUCKDB_VERSION }}
-
-      - name: Build native (linux-amd64)
-        run: |
-          mkdir -p build/release && cd build/release
-          cmake -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DDUCKDB_EXTENSION_NAMES="lastra" \
-                -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
-                -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
-                ../../duckdb
-          cmake --build . --config Release -- -j$(nproc)
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -75,14 +61,13 @@ jobs:
 
             DuckDB extension for reading Lastra columnar time series files.
 
-            **DuckDB version**: ${{ env.DUCKDB_VERSION }}
-
-            ### Files
-            - `lastra.duckdb_extension.wasm` — WebAssembly (for DuckDB-WASM in browser)
-            - `lastra.duckdb_extension` — Linux amd64 native
-
-            ### Usage
+            ### Install
             ```sql
+            INSTALL lastra FROM community;
             LOAD lastra;
             SELECT * FROM 'data.lastra';
             ```
+
+            ### Files
+            - `lastra.duckdb_extension.wasm` — WebAssembly (DuckDB-WASM)
+            - `lastra.duckdb_extension` — Linux amd64
