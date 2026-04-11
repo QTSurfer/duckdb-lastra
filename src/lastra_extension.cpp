@@ -6,7 +6,7 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/replacement_scan.hpp"
-#include "duckdb/main/extension_loader.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
@@ -171,7 +171,7 @@ static void LastraScan(ClientContext &context, TableFunctionInput &data,
     output.SetCardinality(total_output);
 }
 
-// ---- Load function (new API: ExtensionLoader) ----
+// ---- Load ----
 static void LoadInternal(ExtensionLoader &loader) {
     TableFunction lastra_scan("read_lastra", {LogicalType::VARCHAR},
                               LastraScan, LastraBind, LastraInitGlobal);
