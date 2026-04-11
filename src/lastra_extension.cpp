@@ -10,6 +10,7 @@
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
+#include "duckdb/common/vector_operations/vector_operations.hpp"
 #include <memory>
 #include <vector>
 
@@ -97,7 +98,11 @@ static void LastraScan(ClientContext &context, TableFunctionInput &data,
         idx_t rows_left = rg.row_count - state.row_offset;
         idx_t to_read = MinValue<idx_t>(rows_left, max_count - total_output);
 
-        // For each column, decode from the appropriate chunk
+        // Decode each column. For RGs larger than STANDARD_VECTOR_SIZE or when
+        // row_offset > 0, decode to a temp buffer and copy the needed slice.
+        bool need_temp = (state.row_offset > 0) ||
+                         (static_cast<idx_t>(rg.row_count) > max_count - total_output);
+
         for (idx_t col = 0; col < file.series_columns.size(); col++) {
             auto &desc = file.series_columns[col];
             lastra::ColumnChunk chunk;
@@ -108,22 +113,45 @@ static void LastraScan(ClientContext &context, TableFunctionInput &data,
                 chunk = file.flat_chunks[col];
             }
 
-            // If we're reading a partial RG (row_offset > 0), we need to decode the full RG
-            // and skip rows. For simplicity, decode full RG each time.
-            // TODO: optimize by caching decoded RG data
-            switch (desc.data_type) {
-                case lastra::DataType::LONG:
-                    lastra::decode_long_column(chunk, rg.row_count, desc.codec,
-                                              output.data[col], total_output);
-                    break;
-                case lastra::DataType::DOUBLE:
-                    lastra::decode_double_column(chunk, rg.row_count, desc.codec,
-                                                output.data[col], total_output);
-                    break;
-                case lastra::DataType::BINARY:
-                    lastra::decode_binary_column(chunk, rg.row_count,
-                                                output.data[col], total_output);
-                    break;
+            if (!need_temp) {
+                // Fast path: decode directly into output vector
+                switch (desc.data_type) {
+                    case lastra::DataType::LONG:
+                        lastra::decode_long_column(chunk, rg.row_count, desc.codec,
+                                                  output.data[col], total_output);
+                        break;
+                    case lastra::DataType::DOUBLE:
+                        lastra::decode_double_column(chunk, rg.row_count, desc.codec,
+                                                    output.data[col], total_output);
+                        break;
+                    case lastra::DataType::BINARY:
+                        lastra::decode_binary_column(chunk, rg.row_count,
+                                                    output.data[col], total_output);
+                        break;
+                }
+            } else {
+                // Slow path: decode full RG to temp vector, copy slice
+                DataChunk temp_chunk;
+                temp_chunk.Initialize(Allocator::DefaultAllocator(),
+                                     {bind.return_types[col]}, rg.row_count);
+                switch (desc.data_type) {
+                    case lastra::DataType::LONG:
+                        lastra::decode_long_column(chunk, rg.row_count, desc.codec,
+                                                  temp_chunk.data[0], 0);
+                        break;
+                    case lastra::DataType::DOUBLE:
+                        lastra::decode_double_column(chunk, rg.row_count, desc.codec,
+                                                    temp_chunk.data[0], 0);
+                        break;
+                    case lastra::DataType::BINARY:
+                        lastra::decode_binary_column(chunk, rg.row_count,
+                                                    temp_chunk.data[0], 0);
+                        break;
+                }
+                // Copy the slice [row_offset, row_offset+to_read) to output
+                VectorOperations::Copy(temp_chunk.data[0], output.data[col],
+                                      state.row_offset + to_read, state.row_offset,
+                                      total_output);
             }
         }
 
