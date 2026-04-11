@@ -34,9 +34,11 @@ static const double POW10[] = {
 
 void decode_alp(const uint8_t *data, size_t length, int32_t count,
                 double *output) {
-    if (count == 0 || length < 15) return;
+    if (count == 0 || length < 19) return;
 
     size_t pos = 0;
+    // alp-java writes a 4-byte BE count prefix before the vector data
+    pos += 4; // skip count prefix
     uint8_t e = data[pos++];
     uint8_t f = data[pos++];
     uint8_t bit_width = data[pos++];
