@@ -6,7 +6,7 @@
 #include "duckdb/common/file_system.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/replacement_scan.hpp"
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension_loader.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
@@ -171,14 +171,14 @@ static void LastraScan(ClientContext &context, TableFunctionInput &data,
     output.SetCardinality(total_output);
 }
 
-// ---- Register the scan function ----
-void RegisterLastraScan(DatabaseInstance &instance) {
+// ---- Load function (new API: ExtensionLoader) ----
+static void LoadInternal(ExtensionLoader &loader) {
     TableFunction lastra_scan("read_lastra", {LogicalType::VARCHAR},
                               LastraScan, LastraBind, LastraInitGlobal);
-    lastra_scan.projection_pushdown = false; // TODO: add column pruning
-    ExtensionUtil::RegisterFunction(instance, lastra_scan);
+    lastra_scan.projection_pushdown = false;
+    loader.RegisterFunction(lastra_scan);
 
-    // Also register as replacement scan for .lastra files
+    // Replacement scan for .lastra files
     auto scan_fn = [](ClientContext &context, ReplacementScanInput &input,
                       optional_ptr<ReplacementScanData> data) -> unique_ptr<TableRef> {
         auto table_name = ReplacementScan::GetFullPath(input);
@@ -191,38 +191,12 @@ void RegisterLastraScan(DatabaseInstance &instance) {
         table_function->function = make_uniq<FunctionExpression>("read_lastra", std::move(children));
         return std::move(table_function);
     };
-    auto &config = DBConfig::GetConfig(instance);
+    auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
     config.replacement_scans.emplace_back(scan_fn);
-}
-
-// ---- Extension entry point ----
-void LastraExtension::Load(DuckDB &db) {
-    RegisterLastraScan(*db.instance);
-}
-
-std::string LastraExtension::Name() {
-    return "lastra";
-}
-
-std::string LastraExtension::Version() const {
-    return "0.1.0";
 }
 
 } // namespace duckdb
 
-extern "C" {
-
-DUCKDB_EXTENSION_API void lastra_init(duckdb::DatabaseInstance &instance) {
-    duckdb::DuckDB db(instance);
-    db.LoadExtension<duckdb::LastraExtension>();
+DUCKDB_CPP_EXTENSION_ENTRY(lastra, loader) {
+    duckdb::LoadInternal(loader);
 }
-
-DUCKDB_EXTENSION_API const char *lastra_version() {
-    return duckdb::DuckDB::LibraryVersion();
-}
-
-}
-
-#ifndef DUCKDB_EXTENSION_MAIN
-#error DUCKDB_EXTENSION_MAIN must be defined
-#endif
