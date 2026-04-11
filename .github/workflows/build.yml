@@ -15,16 +15,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache DuckDB source
+        uses: actions/cache@v4
+        with:
+          path: duckdb
+          key: duckdb-src-${{ env.DUCKDB_VERSION }}
+
       - name: Clone DuckDB
-        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
+        run: |
+          rm -rf duckdb
+          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
 
       - name: Create extension symlink
         run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: native-${{ env.DUCKDB_VERSION }}
 
       - name: Build
         run: |
           mkdir -p build/release && cd build/release
           cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DDUCKDB_EXTENSION_NAMES="lastra" \
                 -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
                 -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
@@ -48,8 +63,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache DuckDB source
+        uses: actions/cache@v4
+        with:
+          path: duckdb
+          key: duckdb-src-${{ env.DUCKDB_VERSION }}
+
       - name: Clone DuckDB
-        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
+        run: |
+          rm -rf duckdb
+          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
 
       - name: Create extension symlink
         run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
@@ -59,9 +83,9 @@ jobs:
         with:
           version: 3.1.72
 
-      - name: Build WASM (mvp)
+      - name: Build WASM
         run: |
-          mkdir -p build/wasm_mvp && cd build/wasm_mvp
+          mkdir -p build/wasm && cd build/wasm
           emcmake cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DDUCKDB_EXTENSION_NAMES="lastra" \
@@ -75,4 +99,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lastra-wasm
-          path: build/wasm_mvp/extension/lastra/lastra.duckdb_extension.wasm
+          path: build/wasm/extension/lastra/lastra.duckdb_extension.wasm

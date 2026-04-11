@@ -16,8 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache DuckDB source
+        uses: actions/cache@v4
+        with:
+          path: duckdb
+          key: duckdb-src-${{ env.DUCKDB_VERSION }}
+
       - name: Clone DuckDB
-        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+        if: ${{ !hashFiles('duckdb/CMakeLists.txt') }}
+        run: |
+          rm -rf duckdb
+          git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
 
       - name: Create extension symlink
         run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
@@ -39,10 +48,16 @@ jobs:
             ../../duckdb
           emmake make -j$(nproc) lastra_loadable_extension
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: release-native-${{ env.DUCKDB_VERSION }}
+
       - name: Build native (linux-amd64)
         run: |
           mkdir -p build/release && cd build/release
           cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DDUCKDB_EXTENSION_NAMES="lastra" \
                 -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
                 -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
