@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  DUCKDB_VERSION: v1.3.0
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone DuckDB
+        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+
+      - name: Create extension symlink
+        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.72
+
+      - name: Build WASM
+        run: |
+          mkdir -p build/wasm && cd build/wasm
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDUCKDB_EXTENSION_NAMES="lastra" \
+            -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
+            -DWASM_LOADABLE_EXTENSIONS=1 \
+            -DSKIP_EXTENSIONS="parquet;json" \
+            ../../duckdb
+          emmake make -j$(nproc) lastra_loadable_extension
+
+      - name: Build native (linux-amd64)
+        run: |
+          mkdir -p build/release && cd build/release
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DDUCKDB_EXTENSION_NAMES="lastra" \
+                -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
+                -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
+                ../../duckdb
+          cmake --build . --config Release -- -j$(nproc)
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/wasm/extension/lastra/lastra.duckdb_extension.wasm
+            build/release/extension/lastra/lastra.duckdb_extension
+          body: |
+            ## duckdb-lastra ${{ github.ref_name }}
+
+            DuckDB extension for reading Lastra columnar time series files.
+
+            **DuckDB version**: ${{ env.DUCKDB_VERSION }}
+
+            ### Files
+            - `lastra.duckdb_extension.wasm` — WebAssembly (for DuckDB-WASM in browser)
+            - `lastra.duckdb_extension` — Linux amd64 native
+
+            ### Usage
+            ```sql
+            LOAD lastra;
+            SELECT * FROM 'data.lastra';
+            ```

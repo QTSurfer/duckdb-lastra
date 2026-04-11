@@ -1,0 +1,78 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  DUCKDB_VERSION: v1.3.0
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone DuckDB
+        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+
+      - name: Create extension symlink
+        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+
+      - name: Build
+        run: |
+          mkdir -p build/release && cd build/release
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DDUCKDB_EXTENSION_NAMES="lastra" \
+                -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
+                -DDUCKDB_EXTENSION_LASTRA_SHOULD_LINK=1 \
+                -DDUCKDB_EXTENSION_LASTRA_LOAD_TESTS=1 \
+                ../../duckdb
+          cmake --build . --config Release -- -j$(nproc)
+
+      - name: Test
+        run: |
+          echo "SELECT count(*) FROM read_lastra('$GITHUB_WORKSPACE/test/fixtures/series-only.lastra');" | build/release/duckdb
+          echo "SELECT count(*), min(close), max(close) FROM read_lastra('$GITHUB_WORKSPACE/test/fixtures/row-groups.lastra');" | build/release/duckdb
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: lastra-linux-amd64
+          path: build/release/extension/lastra/lastra.duckdb_extension
+
+  wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone DuckDB
+        run: git clone --depth 1 --branch $DUCKDB_VERSION https://github.com/duckdb/duckdb.git duckdb
+
+      - name: Create extension symlink
+        run: mkdir -p duckdb/extension_external && ln -sf $GITHUB_WORKSPACE duckdb/extension_external/lastra
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.72
+
+      - name: Build WASM (mvp)
+        run: |
+          mkdir -p build/wasm_mvp && cd build/wasm_mvp
+          emcmake cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDUCKDB_EXTENSION_NAMES="lastra" \
+            -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
+            -DWASM_LOADABLE_EXTENSIONS=1 \
+            -DSKIP_EXTENSIONS="parquet;json" \
+            ../../duckdb
+          emmake make -j$(nproc) lastra_loadable_extension
+
+      - name: Upload WASM extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: lastra-wasm
+          path: build/wasm_mvp/extension/lastra/lastra.duckdb_extension.wasm
