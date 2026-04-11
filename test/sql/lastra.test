@@ -33,4 +33,4 @@ query I
 SELECT count(*) FROM read_lastra('test/fixtures/row-groups.lastra')
 WHERE ts BETWEEN 1711155600000 AND 1711159200000;
 ----
-3600
+3601
