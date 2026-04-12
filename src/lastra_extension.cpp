@@ -195,6 +195,19 @@ static void LoadInternal(ExtensionLoader &loader) {
     config.replacement_scans.emplace_back(scan_fn);
 }
 
+// Extension class implementation (for static linking / generated loader)
+void LastraExtension::Load(ExtensionLoader &loader) {
+    LoadInternal(loader);
+}
+
+std::string LastraExtension::Name() {
+    return "lastra";
+}
+
+std::string LastraExtension::Version() const {
+    return "0.1.0";
+}
+
 } // namespace duckdb
 
 DUCKDB_CPP_EXTENSION_ENTRY(lastra, loader) {
