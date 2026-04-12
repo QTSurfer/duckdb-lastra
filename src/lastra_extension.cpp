@@ -210,6 +210,10 @@ std::string LastraExtension::Version() const {
 
 } // namespace duckdb
 
+extern "C" {
+
 DUCKDB_CPP_EXTENSION_ENTRY(lastra, loader) {
     duckdb::LoadInternal(loader);
+}
+
 }
