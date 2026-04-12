@@ -39,22 +39,13 @@ jobs:
           version: 3.1.72
 
       - name: Build WASM
-        run: |
-          mkdir -p build/wasm && cd build/wasm
-          emcmake cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDUCKDB_EXTENSION_NAMES="lastra" \
-            -DDUCKDB_EXTENSION_LASTRA_PATH="$GITHUB_WORKSPACE" \
-            -DWASM_LOADABLE_EXTENSIONS=1 \
-            -DSKIP_EXTENSIONS="parquet;json" \
-            ../../duckdb
-          emmake make -j$(nproc) lastra_loadable_extension
+        run: make wasm_mvp
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/wasm/extension/lastra/lastra.duckdb_extension.wasm
+            build/wasm_mvp/extension/lastra/lastra.duckdb_extension.wasm
             build/release/extension/lastra/lastra.duckdb_extension
           body: |
             ## duckdb-lastra ${{ github.ref_name }}
