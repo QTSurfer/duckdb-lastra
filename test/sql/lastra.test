@@ -34,3 +34,24 @@ SELECT count(*) FROM read_lastra('test/fixtures/row-groups.lastra')
 WHERE ts >= 1711155600000 AND ts < 1711159200000;
 ----
 3600
+
+# Regression: ALP decoder must iterate per-vector blocks of 1024 values.
+# Before fix, doubles after position 1024 within a row group collapsed to a
+# single constant (frame * factor_f / factor_e). row-groups.lastra has RGs of
+# 3600/3600/2800 rows, exercising 3+ ALP vectors per RG.
+query I
+SELECT count(DISTINCT close) > 1024 FROM read_lastra('test/fixtures/row-groups.lastra');
+----
+true
+
+# Same regression viewed differently: the tail of the first RG (rows 1500-3500,
+# i.e. past the 1024 boundary) must contain varying values. Under the bug
+# min(close) == max(close) here.
+query I
+WITH numbered AS (
+  SELECT close, ROW_NUMBER() OVER (ORDER BY ts) AS rn
+  FROM read_lastra('test/fixtures/row-groups.lastra')
+)
+SELECT min(close) <> max(close) FROM numbered WHERE rn BETWEEN 1500 AND 3500;
+----
+true
