@@ -4,17 +4,16 @@
 extension:
   name: lastra
   description: Reader for the Lastra columnar time-series format
-  version: 0.1.0
+  version: 0.1.1
   language: C++
   build: cmake
   license: Apache-2.0
   maintainers:
     - mrmx
-  exclude_platforms: "windows_arm64;"
 
 repo:
   github: QTSurfer/duckdb-lastra
-  ref: 7532a0a3c73209f72752d20f5b0aa7680e0b15ec
+  ref: ac7c5e30a9d6022bb83fc3ea2b5472b550ccc09d
 
 docs:
   hello_world: |
