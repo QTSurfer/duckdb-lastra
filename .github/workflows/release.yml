@@ -39,6 +39,12 @@ jobs:
           version: 3.1.72
 
       - name: Build WASM
+        # `make wasm_mvp` invokes `emmake make -Cbuild/wasm_mvp`, which needs
+        # plain Unix Makefiles in the build dir — but the job-level
+        # `GEN: ninja` env tells CMake to emit Ninja files, so emmake hits
+        # "No targets specified and no makefile found." Override per-step.
+        env:
+          GEN: ""
         run: make wasm_mvp
 
       - name: Create GitHub Release
