@@ -13,7 +13,7 @@ extension:
 
 repo:
   github: QTSurfer/duckdb-lastra
-  ref: ac7c5e30a9d6022bb83fc3ea2b5472b550ccc09d
+  ref: 984d6be30ecf91135a5377da904695ed66f55cf3
 
 docs:
   hello_world: |
