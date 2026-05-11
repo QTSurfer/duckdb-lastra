@@ -4,6 +4,7 @@
 #include "lastra_reader.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/file_system.hpp"
+#include "duckdb/function/scalar_function.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/replacement_scan.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -171,12 +172,20 @@ static void LastraScan(ClientContext &context, TableFunctionInput &data,
     output.SetCardinality(total_output);
 }
 
+// ---- Scalar: lastra_version() -> VARCHAR ----
+static void LastraVersionScalar(DataChunk &args, ExpressionState &state, Vector &result) {
+    result.Reference(Value(LASTRA_EXTENSION_VERSION));
+}
+
 // ---- Load ----
 static void LoadInternal(ExtensionLoader &loader) {
     TableFunction lastra_scan("read_lastra", {LogicalType::VARCHAR},
                               LastraScan, LastraBind, LastraInitGlobal);
     lastra_scan.projection_pushdown = false;
     loader.RegisterFunction(lastra_scan);
+
+    loader.RegisterFunction(ScalarFunction("lastra_version", {},
+                                           LogicalType::VARCHAR, LastraVersionScalar));
 
     // Replacement scan for .lastra files
     auto scan_fn = [](ClientContext &context, ReplacementScanInput &input,
@@ -205,7 +214,7 @@ std::string LastraExtension::Name() {
 }
 
 std::string LastraExtension::Version() const {
-    return "0.1.0";
+    return LASTRA_EXTENSION_VERSION;
 }
 
 } // namespace duckdb

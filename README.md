@@ -22,6 +22,9 @@ WHERE ts BETWEEN 1711152000000 AND 1711155600000;
 
 -- Column selection
 SELECT ts, close FROM 'ohlcv.lastra' LIMIT 100;
+
+-- Validate the loaded extension version
+SELECT lastra_version();
 ```
 
 ## Supported codecs

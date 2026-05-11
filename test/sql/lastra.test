@@ -4,6 +4,12 @@
 
 require lastra
 
+# Version function: clients use this to validate they loaded the right build
+query I
+SELECT lastra_version();
+----
+0.2.0
+
 # Read a .lastra file using the table function
 query II
 SELECT typeof(ts), typeof(close) FROM read_lastra('test/fixtures/series-only.lastra') LIMIT 1;

@@ -4,7 +4,7 @@
 extension:
   name: lastra
   description: Reader for the Lastra columnar time-series format
-  version: 0.1.1
+  version: 0.2.0
   language: C++
   build: cmake
   license: Apache-2.0
