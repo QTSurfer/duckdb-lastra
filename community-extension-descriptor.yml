@@ -20,9 +20,8 @@ docs:
     SELECT * FROM read_lastra('data.lastra') LIMIT 10;
   extended_description: |
     Reads Lastra (.lastra) columnar time-series files with per-column codec
-    selection. Designed for financial tick data (OHLCV), IoT sensor readings,
-    and strategy execution results.
-
+    selection. Designed for financial tick data (OHLCV), IoT sensor readings,etc.
+    
     Supported codecs: ALP (adaptive lossless floating-point), Gorilla (XOR),
     Pongo (decimal-aware), delta-varint (timestamps), ZSTD (binary).
 
